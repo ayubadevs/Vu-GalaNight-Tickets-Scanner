@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concert Ticket QR Scanner</title>
+
+  <!-- QR Scanner -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDeeUgQQsHJLB0JTq8RHwlMPz2lSNl9T8k",
+      authDomain: "qr-scanner-app-e3d83.firebaseapp.com",
+      projectId: "qr-scanner-app-e3d83",
+      storageBucket: "qr-scanner-app-e3d83.appspot.com",
+      messagingSenderId: "976726923438",
+      appId: "1:976726923438:web:0323093c6f8028afb9753f",
+      measurementId: "G-PDP8G7QL71"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const analytics = getAnalytics(app);
+
+    const scannedSet = new Set(JSON.parse(localStorage.getItem('scannedCodes')) || []);
+    const scanLog = document.querySelector('#scan-log tbody');
+    let counter = 1;
+
+    function logScan(data, timeLabel = new Date().toLocaleString()) {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${counter++}</td><td>${data}</td><td>${timeLabel}</td>`;
+      scanLog.appendChild(row);
+    }
+
+    function saveScanToLocalStorage(data) {
+      scannedSet.add(data);
+      localStorage.setItem('scannedCodes', JSON.stringify([...scannedSet]));
+    }
+
+    async function sendToFirebase(data) {
+      const codeRef = doc(db, "scans", data);
+      try {
+        const docSnap = await getDoc(codeRef);
+        if (docSnap.exists()) {
+          document.getElementById("scan-result").textContent = "⚠️ Already scanned (server)";
+          document.getElementById("scan-result").style.color = "#f00";
+          return;
+        }
+
+        await setDoc(codeRef, {
+          code: data,
+          timestamp: new Date().toISOString()
+        });
+
+        logScan(data);
+        saveScanToLocalStorage(data);
+        document.getElementById("scan-result").textContent = `✅ Scanned: ${data}`;
+        document.getElementById("scan-result").style.color = "#0f0";
+
+      } catch (error) {
+        console.error("Firebase error:", error);
+        alert("⚠️ Error saving to Firebase");
+      }
+    }
+
+    window.onload = () => {
+      const html5QrCode = new Html5Qrcode("reader");
+
+      function onScanSuccess(qrMessage) {
+        if (scannedSet.has(qrMessage)) {
+          alert('⚠️ This code has already been scanned on this device!');
+          return;
+        }
+
+        html5QrCode.stop().then(() => {
+          sendToFirebase(qrMessage);
+          setTimeout(() => {
+            html5QrCode.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: 250 },
+              onScanSuccess
+            );
+          }, 2000);
+        });
+      }
+
+      Html5Qrcode.getCameras().then(devices => {
+        if (devices && devices.length) {
+          html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: 250 },
+            onScanSuccess
+          );
+        }
+      });
+
+      JSON.parse(localStorage.getItem('scannedCodes') || "[]").forEach((entry, index) => {
+        logScan(entry, "Previously Scanned");
+        counter = index + 2;
+      });
+    };
+
+    window.clearHistory = () => {
+      localStorage.removeItem('scannedCodes');
+      scannedSet.clear();
+      document.querySelector('#scan-log tbody').innerHTML = "";
+      counter = 1;
+      alert("🗑️ Local scan history cleared.");
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to right, #1e1e2f, #3c3c58);
+      padding: 20px;
+      text-align: center;
+      color: #fff;
+    }
+
+    .scanner-container {
+      max-width: 600px;
+      margin: auto;
+      background: #fff;
+      color: #111;
+      padding: 20px;
+      border-radius: 10px;
+      border: 2px dashed #111;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    }
+
+    h2 {
+      font-size: 22px;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 15px;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+      background-color: #fff;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: left;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    th {
+      background-color: #e5e7eb;
+    }
+
+    #scan-result {
+      font-weight: bold;
+      margin-top: 10px;
+      color: #0f0;
+    }
+
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .actions button {
+      padding: 10px 15px;
+      border: none;
+      background-color: #111;
+      color: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    @media (min-width: 600px) {
+      .actions {
+        flex-direction: row;
+        justify-content: center;
+      }
+    }
+
+    #reader {
+      width: 100% !important;
+      max-width: 320px;
+      margin: auto;
+    }
+
+    footer {
+      margin-top: 30px;
+      text-align: center;
+      font-size: 14px;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="scanner-container">
+    <h2>Scan Concert Ticket</h2>
+    <div id="reader"></div>
+    <p id="scan-result"></p>
+
+    <div class="actions">
+      <button onclick="clearHistory()">Clear History</button>
+    </div>
+
+    <table id="scan-log">
+      <thead>
+        <tr><th>#</th><th>Data</th><th>Timestamp</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <footer>
+    Made and Designed By <strong>Iayuba_Softwares</strong>
+  </footer>
+</body>
+</html>
